@@ -53,7 +53,14 @@ import {
   REVIEW_DATA,
   STUDY_MODULES,
   CAMBRIDGE_LIBRARY,
-  DICTATION_DATA
+  DICTATION_DATA,
+  SIMPLE_WORDS,
+  SIMPLE_SENTENCES,
+  NORMAL_WORDS,
+  NORMAL_SENTENCES,
+  HARD_WORDS,
+  HARD_SENTENCES,
+  DictationItem
 } from './study/StudyData';
 
 import { useStudy } from '../contexts/StudyContext';
@@ -883,14 +890,35 @@ function LibraryView({ onBack }: { onBack: () => void }) {
 }
 
 function DictationView({ onBack }: { onBack: () => void }) {
-  const STORAGE_KEY = 'ielts_dictation_progress';
+  // 模式和难度状态
+  const [mode, setMode] = useState<'word' | 'sentence'>('word');
+  const [difficulty, setDifficulty] = useState<'simple' | 'normal' | 'hard'>('simple');
+  
+  // 存储键，包含模式和难度
+  const STORAGE_KEY = `ielts_dictation_${mode}_${difficulty}_progress`;
+
+  // 根据当前模式和难度获取数据
+  const getData = () => {
+    switch (difficulty) {
+      case 'simple':
+        return mode === 'word' ? SIMPLE_WORDS : SIMPLE_SENTENCES;
+      case 'normal':
+        return mode === 'word' ? NORMAL_WORDS : NORMAL_SENTENCES;
+      case 'hard':
+        return mode === 'word' ? HARD_WORDS : HARD_SENTENCES;
+      default:
+        return SIMPLE_WORDS;
+    }
+  };
+
+  const dictationData = getData();
 
   // Helper to load initial state from localStorage
   const saved = useMemo(() => {
     const s = localStorage.getItem(STORAGE_KEY);
     if (!s) return null;
     try { return JSON.parse(s); } catch (e) { return null; }
-  }, []);
+  }, [STORAGE_KEY]);
 
   const initialIndex = (saved && typeof saved.currentIndex === 'number') ? saved.currentIndex : 0;
 
@@ -915,8 +943,23 @@ function DictationView({ onBack }: { onBack: () => void }) {
   const [correctCount, setCorrectCount] = useState(() => 
     (saved && saved.currentIndex === initialIndex && saved.correctCount) ? saved.correctCount : 0
   );
+  const [totalAttempts, setTotalAttempts] = useState(() => 
+    (saved && saved.currentIndex === initialIndex && saved.totalAttempts) ? saved.totalAttempts : 0
+  );
+  
+  // 错题记录
+  const [wrongItems, setWrongItems] = useState<Array<{
+    item: DictationItem;
+    wrongAnswer: string;
+    correctAnswer: string;
+    timestamp: number;
+  }>>(() => {
+    const wrongKey = `ielts_dictation_${mode}_${difficulty}_wrong`;
+    const savedWrong = localStorage.getItem(wrongKey);
+    return savedWrong ? JSON.parse(savedWrong) : [];
+  });
 
-  const currentSentence = DICTATION_DATA?.[currentIndex];
+  const currentItem = dictationData?.[currentIndex];
   const inputRef = useRef<HTMLInputElement>(null);
 
   const playSound = (type: 'success' | 'error') => {
@@ -946,15 +989,15 @@ function DictationView({ onBack }: { onBack: () => void }) {
   };
 
   const nextQuestion = () => {
-    if (!currentSentence) return;
+    if (!currentItem) return;
     
     // Logic for next word or next sentence
-    if (activeWordIndex < (currentSentence.words?.length || 0) - 1) {
+    if (activeWordIndex < (currentItem.words?.length || 0) - 1) {
       setActiveWordIndex(prev => prev + 1);
       resetUIState();
     } else {
-      // Jump to next sentence
-      if (currentIndex < (DICTATION_DATA?.length || 0) - 1) {
+      // Jump to next item
+      if (currentIndex < (dictationData?.length || 0) - 1) {
         setCurrentIndex(prev => prev + 1);
         setActiveWordIndex(0);
         resetUIState();
@@ -968,6 +1011,17 @@ function DictationView({ onBack }: { onBack: () => void }) {
     }
   };
 
+  // 当模式或难度改变时重置状态
+  useEffect(() => {
+    setCurrentIndex(0);
+    setActiveWordIndex(0);
+    resetUIState();
+    setWpm(0);
+    setTimeElapsed(0);
+    setCorrectCount(0);
+    setStartTime(Date.now());
+  }, [mode, difficulty]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeElapsed(Math.floor((Date.now() - startTime) / 1000));
@@ -976,8 +1030,8 @@ function DictationView({ onBack }: { onBack: () => void }) {
   }, [startTime]);
 
   useEffect(() => {
-    if (!currentSentence) return;
-  }, [currentIndex, currentSentence]);
+    if (!currentItem) return;
+  }, [currentIndex, currentItem]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -990,16 +1044,20 @@ function DictationView({ onBack }: { onBack: () => void }) {
       activeWordIndex,
       timeElapsed,
       wpm,
-      correctCount
+      correctCount,
+      totalAttempts
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-  }, [currentIndex, activeWordIndex, timeElapsed, wpm, correctCount]);
+  }, [currentIndex, activeWordIndex, timeElapsed, wpm, correctCount, totalAttempts]);
 
   const handleCheck = (val: string) => {
     if (status !== 'idle') return;
 
-    const currentTarget = currentSentence.words?.[activeWordIndex]?.toLowerCase().replace(/[.,?!]/g, '') || '';
+    const currentTarget = currentItem.words?.[activeWordIndex]?.toLowerCase().replace(/[.,?!]/g, '') || '';
     const inputClean = val.toLowerCase().trim();
+    
+    // 更新总尝试次数
+    setTotalAttempts(prev => prev + 1);
 
     if (inputClean === currentTarget) {
       // SUCCESS
@@ -1021,15 +1079,30 @@ function DictationView({ onBack }: { onBack: () => void }) {
       setMessage('回答错误，再接再厉！');
       playSound('error');
       
+      // 记录错题
+      if (currentItem) {
+        const newWrongItem = {
+          item: currentItem,
+          wrongAnswer: val,
+          correctAnswer: currentTarget,
+          timestamp: Date.now()
+        };
+        setWrongItems(prev => {
+          const updated = [...prev, newWrongItem];
+          const wrongKey = `ielts_dictation_${mode}_${difficulty}_wrong`;
+          localStorage.setItem(wrongKey, JSON.stringify(updated));
+          return updated;
+        });
+      }
+      
       const newErrCount = errorCount + 1;
       setErrorCount(newErrCount);
 
       if (newErrCount >= 3) {
         setShowTip(true);
         // Display hint: CN - EN
-        setMessage(`提示：${currentSentence.zh} - ${currentTarget}`);
-        // Auto-jump after 1s
-        setTimeout(nextQuestion, 1500);
+        setMessage(`提示：${currentItem.zh} - ${currentTarget}`);
+        // 显示提示后，不自动跳转，等待用户输入正确答案
       } else {
         // Allow user to try again after a brief moment
         setTimeout(() => {
@@ -1043,12 +1116,16 @@ function DictationView({ onBack }: { onBack: () => void }) {
 
   const resetProgress = () => {
     localStorage.removeItem(STORAGE_KEY);
+    const wrongKey = `ielts_dictation_${mode}_${difficulty}_wrong`;
+    localStorage.removeItem(wrongKey);
     setCurrentIndex(0);
     setActiveWordIndex(0);
     resetUIState();
     setWpm(0);
     setTimeElapsed(0);
     setCorrectCount(0);
+    setTotalAttempts(0);
+    setWrongItems([]);
     setStartTime(Date.now());
   };
 
@@ -1071,25 +1148,82 @@ function DictationView({ onBack }: { onBack: () => void }) {
         </div>
         <div className="px-6 py-2 bg-surface-container-low rounded-2xl border border-outline-variant/10">
           <span className="text-xs font-black text-on-surface-variant">
-            关卡 {currentIndex + 1} / {DICTATION_DATA?.length} · 单词 {activeWordIndex + 1}/{currentSentence.words?.length}
+            {mode === 'word' ? '单词' : '句子'} {currentIndex + 1} / {dictationData?.length} · 进度 {activeWordIndex + 1}/{currentItem?.words?.length || 0}
           </span>
         </div>
       </div>
 
+      {/* 模式切换栏 */}
+      <div className="flex gap-4">
+        <button
+          onClick={() => setMode('word')}
+          className={`flex-1 py-3 rounded-2xl font-bold transition-all ${mode === 'word' ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'}`}
+        >
+          单词模式
+        </button>
+        <button
+          onClick={() => setMode('sentence')}
+          className={`flex-1 py-3 rounded-2xl font-bold transition-all ${mode === 'sentence' ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'}`}
+        >
+          句子模式
+        </button>
+      </div>
+
+      {/* 难度选择标签 */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => setDifficulty('simple')}
+          className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${difficulty === 'simple' ? 'bg-green-100 text-green-700' : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'}`}
+        >
+          Simple
+        </button>
+        <button
+          onClick={() => setDifficulty('normal')}
+          className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${difficulty === 'normal' ? 'bg-blue-100 text-blue-700' : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'}`}
+        >
+          Normal
+        </button>
+        <button
+          onClick={() => setDifficulty('hard')}
+          className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${difficulty === 'hard' ? 'bg-red-100 text-red-700' : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'}`}
+        >
+          Hard
+        </button>
+      </div>
+
       <div className="bg-surface-container-lowest p-12 rounded-[3.5rem] border border-outline-variant/10 shadow-2xl space-y-12 flex flex-col items-center">
         <div className="text-center space-y-4">
-          <span className="px-4 py-1.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-[0.2em]">
-            Listen & Type
-          </span>
+          <div className="flex items-center justify-center gap-4">
+            <span className="px-4 py-1.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-[0.2em]">
+              Listen & Type
+            </span>
+            <span className={`px-4 py-1.5 ${difficulty === 'simple' ? 'bg-green-100 text-green-700' : difficulty === 'normal' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'} text-[10px] font-black rounded-full uppercase tracking-[0.2em]`}>
+              {difficulty}
+            </span>
+          </div>
           <h3 className="text-5xl font-black text-on-surface tracking-tight leading-tight">
-            {currentSentence.zh}
+            {currentItem?.zh}
           </h3>
           <button 
-            onClick={() => speak(currentSentence.words?.[activeWordIndex] || '')}
+            onClick={() => speak(currentItem?.words?.[activeWordIndex] || '')}
             className="flex items-center gap-2 mx-auto px-6 py-2.5 bg-surface-container-low hover:bg-surface-container-high text-primary rounded-full transition-all font-bold text-sm"
           >
             <Volume2 className="w-5 h-5" /> 听到什么？
           </button>
+        </div>
+
+        {/* 进度条 */}
+        <div className="w-full max-w-lg">
+          <div className="h-2 bg-surface-container-low rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-primary transition-all duration-500" 
+              style={{ width: `${((currentIndex * (currentItem?.words?.length || 1)) + activeWordIndex) / (dictationData.length * (currentItem?.words?.length || 1)) * 100}%` }}
+            ></div>
+          </div>
+          <div className="flex justify-between mt-2">
+            <span className="text-xs font-bold text-on-surface-variant">{mode === 'word' ? '单词' : '句子'} 1/{dictationData.length}</span>
+            <span className="text-xs font-bold text-on-surface-variant">{mode === 'word' ? '单词' : '句子'} {dictationData.length}/{dictationData.length}</span>
+          </div>
         </div>
 
         <div className="w-full max-w-lg space-y-6">
@@ -1103,8 +1237,8 @@ function DictationView({ onBack }: { onBack: () => void }) {
                 if (status !== 'idle') setStatus('idle');
               }}
               onKeyDown={e => e.key === 'Enter' && handleCheck(inputValue)}
-              placeholder="请输入听到的单词"
-              disabled={status === 'success' || showTip}
+              placeholder={mode === 'word' ? "请输入听到的单词" : "请输入听到的句子"}
+              disabled={status === 'success'}
               className={`w-full px-8 py-6 text-center text-3xl font-black bg-transparent border-b-8 transition-all duration-300 outline-none ${
                 status === 'success' 
                   ? 'border-green-500 text-green-600' 
@@ -1132,6 +1266,25 @@ function DictationView({ onBack }: { onBack: () => void }) {
             )}
           </AnimatePresence>
         </div>
+
+        {/* 词-句联动入口 */}
+        {mode === 'word' && currentItem?.relatedId && (
+          <button
+            onClick={() => {
+              setMode('sentence');
+              // 找到关联的句子索引
+              const sentenceData = difficulty === 'simple' ? SIMPLE_SENTENCES : 
+                                 difficulty === 'normal' ? NORMAL_SENTENCES : HARD_SENTENCES;
+              const relatedIndex = sentenceData.findIndex(item => item.id === currentItem.relatedId);
+              if (relatedIndex !== -1) {
+                setCurrentIndex(relatedIndex);
+              }
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-primary/10 text-primary rounded-full transition-all font-bold text-sm hover:bg-primary/20"
+          >
+            <ArrowRight className="w-4 h-4" /> 练习相关句子
+          </button>
+        )}
 
         <div className="flex gap-12 pt-6">
           <div className="text-center">
@@ -1161,7 +1314,7 @@ function DictationView({ onBack }: { onBack: () => void }) {
           </div>
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">正确率</p>
-            <p className="text-2xl font-black">{correctCount > 0 ? '100%' : '--'}</p>
+            <p className="text-2xl font-black">{totalAttempts > 0 ? Math.round((correctCount / totalAttempts) * 100) + '%' : '--'}</p>
           </div>
         </div>
         <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 flex items-center gap-6">
@@ -1174,6 +1327,46 @@ function DictationView({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+
+      {/* 错题记录 */}
+      {wrongItems.length > 0 && (
+        <div className="bg-surface-container-lowest p-8 rounded-[2.5rem] border border-outline-variant/10 shadow-sm">
+          <h3 className="text-xl font-black font-headline mb-6 flex items-center gap-2">
+            <AlertCircle className="w-6 h-6 text-amber-500" /> 错题记录
+          </h3>
+          <div className="space-y-4 max-h-60 overflow-y-auto">
+            {wrongItems.slice(-5).map((item, index) => (
+              <div key={index} className="p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                <div className="flex justify-between items-start mb-2">
+                  <p className="font-bold text-on-surface">{item.item.zh}</p>
+                  <span className="text-xs font-bold text-amber-500">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">你的答案</p>
+                    <p className="text-red-500 font-medium">{item.wrongAnswer}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">正确答案</p>
+                    <p className="text-green-600 font-medium">{item.correctAnswer}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {wrongItems.length > 5 && (
+            <button 
+              onClick={() => {
+                // 这里可以添加查看全部错题的逻辑
+                alert('查看全部错题功能开发中');
+              }}
+              className="mt-4 text-primary font-bold text-sm flex items-center gap-1 hover:underline"
+            >
+              查看全部 {wrongItems.length} 条错题 <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
     </motion.div>
   );
 }
