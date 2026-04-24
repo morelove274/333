@@ -975,32 +975,82 @@ function DictationView({ onBack }: { onBack: () => void }) {
     audio.play().catch(e => console.log('Audio play blocked', e));
   };
 
-  const speak = (text: string) => {
+  const speak = (text: string, isSentenceMode = false, words?: string[]) => {
     if (!text) return;
     
     try {
       setAudioStatus('loading');
       setIsPlaying(true);
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 0.9;
       
-      utterance.onstart = () => {
-        setAudioStatus('playing');
+      const speakUtterance = (utteranceText: string) => {
+        const utterance = new SpeechSynthesisUtterance(utteranceText);
+        utterance.lang = 'en-US';
+        utterance.rate = 0.9;
+        
+        return utterance;
       };
       
-      utterance.onend = () => {
-        setAudioStatus('idle');
-        setIsPlaying(false);
-      };
-      
-      utterance.onerror = () => {
-        setAudioStatus('error');
-        setIsPlaying(false);
-      };
-      
-      window.speechSynthesis.speak(utterance);
+      if (isSentenceMode && words && words.length > 0) {
+        // 句子模式：先读完整句子，再依次读每个单词
+        const sentenceUtterance = speakUtterance(text);
+        
+        sentenceUtterance.onstart = () => {
+          setAudioStatus('playing');
+        };
+        
+        sentenceUtterance.onend = () => {
+          // 句子读完后，依次读每个单词
+          let currentWordIndex = 0;
+          
+          const speakNextWord = () => {
+            if (currentWordIndex < words.length) {
+              const wordUtterance = speakUtterance(words[currentWordIndex]);
+              
+              wordUtterance.onend = () => {
+                currentWordIndex++;
+                // 单词之间停顿0.5秒
+                setTimeout(speakNextWord, 500);
+              };
+              
+              window.speechSynthesis.speak(wordUtterance);
+            } else {
+              // 所有单词读完
+              setAudioStatus('idle');
+              setIsPlaying(false);
+            }
+          };
+          
+          // 句子读完后停顿0.5秒再开始读单词
+          setTimeout(speakNextWord, 500);
+        };
+        
+        sentenceUtterance.onerror = () => {
+          setAudioStatus('error');
+          setIsPlaying(false);
+        };
+        
+        window.speechSynthesis.speak(sentenceUtterance);
+      } else {
+        // 单词模式：直接读单个单词
+        const utterance = speakUtterance(text);
+        
+        utterance.onstart = () => {
+          setAudioStatus('playing');
+        };
+        
+        utterance.onend = () => {
+          setAudioStatus('idle');
+          setIsPlaying(false);
+        };
+        
+        utterance.onerror = () => {
+          setAudioStatus('error');
+          setIsPlaying(false);
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      }
     } catch (error) {
       setAudioStatus('error');
       setIsPlaying(false);
@@ -1066,11 +1116,17 @@ function DictationView({ onBack }: { onBack: () => void }) {
 
   // 自动朗读功能
   useEffect(() => {
-    if (currentItem && currentItem.words && currentItem.words[activeWordIndex]) {
+    if (currentItem && currentItem.words) {
       // 停止当前正在播放的音频
       window.speechSynthesis.cancel();
       // 自动播放当前单词/句子
-      speak(currentItem.words[activeWordIndex]);
+      if (mode === 'sentence' && currentItem.en) {
+        // 句子模式：读完整句子 + 每个单词
+        speak(currentItem.en, true, currentItem.words);
+      } else if (currentItem.words[activeWordIndex]) {
+        // 单词模式：只读当前单词
+        speak(currentItem.words[activeWordIndex]);
+      }
     }
   }, [currentIndex, activeWordIndex, mode, difficulty, currentItem]);
 
@@ -1242,7 +1298,15 @@ function DictationView({ onBack }: { onBack: () => void }) {
             {currentItem?.zh}
           </h3>
           <button 
-            onClick={() => speak(currentItem?.words?.[activeWordIndex] || '')}
+            onClick={() => {
+              if (mode === 'sentence' && currentItem?.en && currentItem?.words) {
+                // 句子模式：读完整句子 + 每个单词
+                speak(currentItem.en, true, currentItem.words);
+              } else if (currentItem?.words?.[activeWordIndex]) {
+                // 单词模式：只读当前单词
+                speak(currentItem.words[activeWordIndex]);
+              }
+            }}
             disabled={isPlaying}
             className="flex items-center gap-2 mx-auto px-6 py-2.5 bg-surface-container-low hover:bg-surface-container-high text-primary rounded-full transition-all font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
