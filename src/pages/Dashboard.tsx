@@ -233,7 +233,6 @@ export default function Dashboard() {
               <span className="text-sm text-on-surface-variant">加入时间</span>
               <span className="font-medium text-on-surface">{profile.joinDate || '未知'}</span>
             </div>
-          
             <div className="pt-4 border-t border-outline-variant/10">
               <button className="w-full py-3 bg-primary/10 text-primary rounded-2xl font-bold text-sm hover:bg-primary/20 transition-colors">
                 编辑资料
@@ -242,6 +241,7 @@ export default function Dashboard() {
                 账户安全提示：请定期修改密码，保护个人信息
               </p>
             </div>
+          </div>
         </motion.div>
         
         {/* 智学雅思助手聊天组件 */}
