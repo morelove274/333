@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   TrendingUp, 
   BookOpen, 
@@ -44,6 +44,21 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  
+  // 滚动到底部函数，只在新消息加载完成后调用
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+  }, []);
+  
+  // 只在消息数量变化时滚动，不在输入框聚焦时触发
+  useEffect(() => {
+    if (!isLoading) {
+      scrollToBottom();
+    }
+  }, [messages, isLoading, scrollToBottom]);
 
   const firstName = profile.name.split(' ')[0];
 
@@ -65,37 +80,97 @@ export default function Dashboard() {
   };
   
   // 聊天功能函数
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-  
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-  
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
     
-    const newMessage = { role: 'user' as const, content: inputValue.trim() };
-    setMessages(prev => [...prev, newMessage]);
+    const userMessage = { role: 'user' as const, content: inputValue.trim() };
+    setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
     
     try {
-      const response = await fetch('http://localhost:3000/chat', {
+      // 火山引擎豆包API配置
+      const API_KEY = 'ark-d8026cab-45bf-4ee2-8d82-3ed39b432d0a-11b12';
+      const API_URL = 'https://ark-cn-beijing.bytedance.net/api/v3/chat/completions';
+      
+      // 构建系统提示，设置AI人设
+      const systemPrompt = {
+        role: 'system',
+        content: '你是「雅思全能助手」，一个专业的雅思备考指导和通用AI助手。你需要：1. 精准解答雅思备考相关问题，包括口语、写作、听力、阅读等各个方面；2. 提供专业的学习建议和备考策略；3. 像通用AI一样能进行日常对话，解答各种问题；4. 使用友好、专业的语言，帮助用户更好地准备雅思考试。'
+      };
+      
+      // 构建消息数组，包含系统提示和历史消息
+      const messagesWithSystem = [systemPrompt, ...messages, userMessage];
+      
+      // 调用豆包API - 启用流式响应
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify({
-          messages: [...messages, newMessage]
+          model: 'doubao-pro-4k',
+          messages: messagesWithSystem,
+          temperature: 0.7,
+          max_tokens: 1000,
+          stream: true  // 启用流式响应
         })
       });
       
-      const data = await response.json();
-      setMessages(prev => [...prev, { role: 'assistant' as const, content: data.reply }]);
+      if (!response.ok) {
+        throw new Error('API调用失败');
+      }
+      
+      // 处理流式响应
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+              
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) {
+                  fullContent += content;
+                  // 实时更新UI
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg?.role === 'assistant') {
+                      return [...prev.slice(0, -1), { ...lastMsg, content: fullContent }];
+                    }
+                    return [...prev, { role: 'assistant', content: fullContent }];
+                  });
+                }
+              } catch (e) {
+                // 忽略解析错误
+              }
+            }
+          }
+        }
+      }
+      
+      // 语音合成回复
+      if ('speechSynthesis' in window && fullContent) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(fullContent);
+        utterance.lang = 'zh-CN';
+        window.speechSynthesis.speak(utterance);
+      }
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant' as const, content: '抱歉，我暂时无法回答你的问题，请稍后再试。' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: '网络异常，请稍后再试。' }]);
     } finally {
       setIsLoading(false);
     }
@@ -149,28 +224,16 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <div className="space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-bold">{profile.name.charAt(0)}</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">基本信息</p>
-                <p className="font-bold text-on-surface">{profile.name || '访客用户'}</p>
-                <p className="text-sm text-on-surface-variant">{profile.email || '未设置邮箱'}</p>
-              </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-on-surface-variant">学号</span>
+              <span className="font-medium text-on-surface">{profile.studentId || '无'}</span>
             </div>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-on-surface-variant">学号</span>
-                <span className="font-medium text-on-surface">{profile.studentId || '无'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-on-surface-variant">加入时间</span>
-                <span className="font-medium text-on-surface">{profile.joinDate || '未知'}</span>
-              </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-on-surface-variant">加入时间</span>
+              <span className="font-medium text-on-surface">{profile.joinDate || '未知'}</span>
             </div>
+          </div>
             
             <div className="pt-4 border-t border-outline-variant/10">
               <button className="w-full py-3 bg-primary/10 text-primary rounded-2xl font-bold text-sm hover:bg-primary/20 transition-colors">
@@ -184,9 +247,9 @@ export default function Dashboard() {
         </motion.div>
         
         {/* 智学雅思助手聊天组件 */}
-        <div className="lg:col-span-2 bg-surface-container-lowest rounded-[2.5rem] border border-outline-variant/10 shadow-sm overflow-hidden flex flex-col">
+        <div className="lg:col-span-2 bg-surface-container-lowest rounded-[2.5rem] border border-outline-variant/10 shadow-sm overflow-hidden flex flex-col h-[500px]">
           {/* 聊天头部 */}
-          <div className="p-6 border-b border-outline-variant/10">
+          <div className="p-6 border-b border-outline-variant/10 flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
                 <Bot className="w-5 h-5" />
@@ -199,19 +262,25 @@ export default function Dashboard() {
           </div>
 
           {/* 聊天记录区域 */}
-          <div className="flex-1 p-6 overflow-y-auto space-y-4">
+          <div 
+            ref={chatContainerRef}
+            className="flex-1 p-6 overflow-y-auto space-y-4 min-h-0"
+          >
             {messages.map((msg, index) => (
               <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] p-4 rounded-2xl ${msg.role === 'user' ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface'}`}>
-                  <p className="text-sm">{msg.content}</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                 </div>
               </div>
             ))}
-            {isLoading && (
+            {isLoading && messages[messages.length - 1]?.role === 'user' && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] p-4 rounded-2xl bg-surface-container-low text-on-surface flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <p className="text-sm">正在思考...</p>
+                <div className="max-w-[80%] p-4 rounded-2xl bg-surface-container-low text-on-surface">
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
                 </div>
               </div>
             )}
@@ -219,11 +288,11 @@ export default function Dashboard() {
           </div>
 
           {/* 输入区域 */}
-          <div className="p-4 border-t border-outline-variant/10">
+          <div className="p-4 border-t border-outline-variant/10 flex-shrink-0">
             <div className="flex items-center gap-3">
               <button 
                 onClick={handleVoiceInput}
-                className={`p-3 rounded-full ${isListening ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface-variant'} transition-colors`}
+                className={`p-3 rounded-full flex-shrink-0 ${isListening ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface-variant'} transition-colors`}
               >
                 <Mic className="w-5 h-5" />
               </button>
@@ -238,7 +307,7 @@ export default function Dashboard() {
               <button 
                 onClick={handleSendMessage}
                 disabled={!inputValue.trim() || isLoading}
-                className={`p-3 rounded-full ${(inputValue.trim() && !isLoading) ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface-variant'} transition-colors`}
+                className={`p-3 rounded-full flex-shrink-0 ${(inputValue.trim() && !isLoading) ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface-variant'} transition-colors`}
               >
                 <Send className="w-5 h-5" />
               </button>

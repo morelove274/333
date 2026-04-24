@@ -959,6 +959,10 @@ function DictationView({ onBack }: { onBack: () => void }) {
     return savedWrong ? JSON.parse(savedWrong) : [];
   });
 
+  // 音频状态
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audioStatus, setAudioStatus] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
+
   const currentItem = dictationData?.[currentIndex];
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -973,11 +977,34 @@ function DictationView({ onBack }: { onBack: () => void }) {
 
   const speak = (text: string) => {
     if (!text) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.9;
-    window.speechSynthesis.speak(utterance);
+    
+    try {
+      setAudioStatus('loading');
+      setIsPlaying(true);
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.9;
+      
+      utterance.onstart = () => {
+        setAudioStatus('playing');
+      };
+      
+      utterance.onend = () => {
+        setAudioStatus('idle');
+        setIsPlaying(false);
+      };
+      
+      utterance.onerror = () => {
+        setAudioStatus('error');
+        setIsPlaying(false);
+      };
+      
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      setAudioStatus('error');
+      setIsPlaying(false);
+    }
   };
 
   const resetUIState = () => {
@@ -1036,6 +1063,16 @@ function DictationView({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     inputRef.current?.focus();
   }, [currentIndex, activeWordIndex, status]);
+
+  // 自动朗读功能
+  useEffect(() => {
+    if (currentItem && currentItem.words && currentItem.words[activeWordIndex]) {
+      // 停止当前正在播放的音频
+      window.speechSynthesis.cancel();
+      // 自动播放当前单词/句子
+      speak(currentItem.words[activeWordIndex]);
+    }
+  }, [currentIndex, activeWordIndex, mode, difficulty, currentItem]);
 
   // Real-time progress persistence
   useEffect(() => {
@@ -1201,14 +1238,19 @@ function DictationView({ onBack }: { onBack: () => void }) {
               {difficulty}
             </span>
           </div>
-          <h3 className="text-5xl font-black text-on-surface tracking-tight leading-tight">
+          <h3 className={`text-5xl font-black tracking-tight leading-tight transition-all duration-300 ${isPlaying ? 'text-primary animate-pulse' : 'text-on-surface'}`}>
             {currentItem?.zh}
           </h3>
           <button 
             onClick={() => speak(currentItem?.words?.[activeWordIndex] || '')}
-            className="flex items-center gap-2 mx-auto px-6 py-2.5 bg-surface-container-low hover:bg-surface-container-high text-primary rounded-full transition-all font-bold text-sm"
+            disabled={isPlaying}
+            className="flex items-center gap-2 mx-auto px-6 py-2.5 bg-surface-container-low hover:bg-surface-container-high text-primary rounded-full transition-all font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Volume2 className="w-5 h-5" /> 听到什么？
+            {audioStatus === 'loading' && <Loader2 className="w-5 h-5 animate-spin" />}
+            {audioStatus === 'playing' && <Volume2 className="w-5 h-5 animate-pulse" />}
+            {audioStatus === 'error' && <VolumeX className="w-5 h-5 text-red-500" />}
+            {audioStatus === 'idle' && <Volume2 className="w-5 h-5" />}
+            {audioStatus === 'loading' ? '加载中...' : audioStatus === 'playing' ? '正在播放' : audioStatus === 'error' ? '播放失败' : '听到什么？'}
           </button>
         </div>
 
