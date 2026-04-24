@@ -52,10 +52,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const login = (username: string) => {
+  const login = (username: string, userInfo?: any) => {
     setIsLoggedIn(true);
     setIsGuest(false);
-    updateProfile({ name: username });
+    if (userInfo) {
+      updateProfile({
+        name: userInfo.name || username,
+        email: userInfo.email || '',
+        studentId: userInfo.studentId || '',
+        joinDate: userInfo.joinDate || ''
+      });
+    } else {
+      updateProfile({ name: username });
+    }
     localStorage.setItem('is_logged_in', 'true');
     localStorage.removeItem('is_guest');
   };

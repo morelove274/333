@@ -6,6 +6,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import StudyCenter from './pages/StudyCenter';
 import AISpeaking from './pages/study/AISpeaking';
@@ -241,6 +242,10 @@ function AppRoutes() {
         <Route 
           path="/login" 
           element={!isLoggedIn ? <LoginPage /> : <Navigate to="/dashboard" replace />} 
+        />
+        <Route 
+          path="/register" 
+          element={!isLoggedIn ? <RegisterPage /> : <Navigate to="/dashboard" replace />} 
         />
         <Route 
           path="/" 

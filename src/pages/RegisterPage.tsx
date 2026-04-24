@@ -1,63 +1,65 @@
 import React, { useState } from 'react';
-import { GraduationCap, Eye, ArrowRight, ShieldCheck, Award, TrendingUp } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { GraduationCap, Eye, ArrowRight, ShieldCheck, Award, TrendingUp, X } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { useUser } from '../context/UserContext';
 import type { FormEvent } from 'react';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const navigate = useNavigate();
-  const { login, loginAsGuest } = useUser();
+  const location = useLocation();
+  const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberPassword, setRememberPassword] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  // 从本地存储加载记住的密码
-  React.useEffect(() => {
-    const savedUsername = localStorage.getItem('remembered_username');
-    const savedPassword = localStorage.getItem('remembered_password');
-    if (savedUsername && savedPassword) {
-      setUsername(savedUsername);
-      setPassword(savedPassword);
-      setRememberPassword(true);
-    }
-  }, []);
-
-  const handleLogin = (e: FormEvent) => {
+  const handleRegister = (e: FormEvent) => {
     e.preventDefault();
-    if (!username || !password) {
-      setError('请先注册账号，再进行登录');
+    
+    // 表单验证
+    if (!name || !username || !password) {
+      setError('请填写所有必填字段');
       return;
     }
     
-    // 验证用户
+    if (password.length < 6) {
+      setError('密码长度不能少于6位');
+      return;
+    }
+    
+    // 生成学号
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+    const joinDate = today.toISOString().split('T')[0];
+    
+    // 获取当天注册用户数
+    const registerCount = JSON.parse(localStorage.getItem('register_count') || '{}');
+    const todayCount = (registerCount[dateStr] || 0) + 1;
+    registerCount[dateStr] = todayCount;
+    localStorage.setItem('register_count', JSON.stringify(registerCount));
+    
+    // 生成学号：IELTS-YYYYMMDD-XXXX
+    const studentId = `IELTS-${dateStr}-${String(todayCount).padStart(4, '0')}`;
+    
+    // 保存用户信息
     const users = JSON.parse(localStorage.getItem('users') || '{}');
-    const user = users[username];
+    users[username] = {
+      name,
+      password,
+      studentId,
+      joinDate
+    };
+    localStorage.setItem('users', JSON.stringify(users));
     
-    if (!user) {
-      setError('账号不存在，请先注册');
-      return;
-    }
+    // 显示成功消息
+    setSuccess('注册成功，请使用学号和密码登录');
+    setError('');
     
-    if (user.password !== password) {
-      setError('密码错误');
-      return;
-    }
-    
-    // 记住密码
-    if (rememberPassword) {
-      localStorage.setItem('remembered_username', username);
-      localStorage.setItem('remembered_password', password);
-    } else {
-      localStorage.removeItem('remembered_username');
-      localStorage.removeItem('remembered_password');
-    }
-    
-    // 登录成功
-    login(username, user);
-    navigate('/dashboard');
+    // 3秒后跳转到登录页
+    setTimeout(() => {
+      navigate('/login');
+    }, 3000);
   };
 
   return (
@@ -76,7 +78,7 @@ export default function LoginPage() {
       <main className="relative z-10 w-full max-w-7xl px-6 py-12 md:px-12">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">
           
-          {/* Left: Login Card */}
+          {/* Left: Register Card */}
           <motion.div 
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -84,19 +86,40 @@ export default function LoginPage() {
             className="lg:col-span-5"
           >
             <div className="bg-[#3b82f6] p-10 md:p-14 rounded-[3.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] border border-white/10">
-              <div className="flex items-center gap-4 mb-16">
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#3b82f6] shadow-inner">
-                  <GraduationCap className="w-8 h-8" />
+              <div className="flex items-center justify-between mb-16">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#3b82f6] shadow-inner">
+                    <GraduationCap className="w-8 h-8" />
+                  </div>
+                  <h1 className="text-3xl font-black text-white tracking-tighter">IELTS 智学</h1>
                 </div>
-                <h1 className="text-3xl font-black text-white tracking-tighter">IELTS 智学</h1>
+                <button 
+                  onClick={() => navigate('/login')}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6 text-white" />
+                </button>
               </div>
 
-              <form onSubmit={handleLogin} className="space-y-8">
+              <form onSubmit={handleRegister} className="space-y-6">
+                <h2 className="text-2xl font-black text-white mb-8">创建账号</h2>
+                
                 <div className="space-y-3">
-                  <label className="block text-[10px] font-black text-white/50 uppercase tracking-[0.2em] px-1">账号凭据</label>
+                  <label className="block text-[10px] font-black text-white/50 uppercase tracking-[0.2em] px-1">昵称</label>
                   <input
                     className="w-full px-6 py-4 bg-black/10 border-none rounded-2xl text-white placeholder:text-white/30 focus:ring-2 focus:ring-white/20 transition-all outline-none"
-                    placeholder="请输入注册账号"
+                    placeholder="请输入昵称"
+                    type="text"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-[10px] font-black text-white/50 uppercase tracking-[0.2em] px-1">账号</label>
+                  <input
+                    className="w-full px-6 py-4 bg-black/10 border-none rounded-2xl text-white placeholder:text-white/30 focus:ring-2 focus:ring-white/20 transition-all outline-none"
+                    placeholder="请输入登录用的账号名"
                     type="text"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
@@ -108,7 +131,7 @@ export default function LoginPage() {
                   <div className="relative">
                     <input
                       className="w-full px-6 py-4 bg-black/10 border-none rounded-2xl text-white placeholder:text-white/30 focus:ring-2 focus:ring-white/20 transition-all outline-none"
-                      placeholder="请输入您的密码"
+                      placeholder="请输入密码（不少于6位）"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
@@ -123,33 +146,17 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {error && (
-                  <p className="text-xs font-bold text-red-100 bg-red-500/30 py-2 px-4 rounded-xl text-center">{error}</p>
+                {(error || success) && (
+                  <p className={`text-xs font-bold py-2 px-4 rounded-xl text-center ${error ? 'text-red-100 bg-red-500/30' : 'text-green-100 bg-green-500/30'}`}>
+                    {error || success}
+                  </p>
                 )}
 
-                <div className="flex items-center justify-between px-1">
-                  <label className="flex items-center gap-2 cursor-pointer group">
-                    <input 
-                      className="w-5 h-5 rounded bg-black/20 border-none text-white focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer" 
-                      type="checkbox" 
-                      checked={rememberPassword}
-                      onChange={(e) => setRememberPassword(e.target.checked)}
-                    />
-                    <span className="text-sm text-white/60 group-hover:text-white transition-colors">记住密码</span>
-                  </label>
-                  <button 
-                    onClick={() => navigate('/register')}
-                    className="text-sm text-white/60 hover:text-white transition-colors"
-                  >
-                    立即注册
-                  </button>
-                </div>
-
                 <button
-                  className="w-full py-5 mt-6 bg-white text-[#3b82f6] font-black rounded-2xl shadow-2xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-lg group"
+                  className="w-full py-5 mt-4 bg-white text-[#3b82f6] font-black rounded-2xl shadow-2xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-lg group"
                   type="submit"
                 >
-                  进入学习空间
+                  注册账号
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
               </form>
@@ -170,27 +177,21 @@ export default function LoginPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Feature 1 */}
-              <div 
-                onClick={() => navigate('/register')}
-                className="bg-[#3b82f6]/40 backdrop-blur-md p-10 rounded-[2.5rem] border border-white/5 hover:bg-[#3b82f6]/50 transition-all group cursor-pointer flex flex-col justify-center"
-              >
-                <div className="mb-8 p-3 bg-white/10 w-fit rounded-xl text-white group-hover:scale-110 transition-transform">
+              <div className="bg-[#3b82f6]/40 backdrop-blur-md p-10 rounded-[2.5rem] border border-white/5 flex flex-col justify-center">
+                <div className="mb-8 p-3 bg-white/10 w-fit rounded-xl text-white">
                   <GraduationCap className="w-10 h-10" />
                 </div>
                 <h3 className="text-white font-black text-2xl mb-2">加入雅思智学</h3>
                 <p className="text-white/50 text-sm">支持数据云同步，开启个性化提分</p>
               </div>
 
-              {/* Guest Login */}
-              <div 
-                onClick={() => { loginAsGuest(); navigate('/dashboard'); }}
-                className="bg-[#3b82f6]/40 backdrop-blur-md p-10 rounded-[2.5rem] border border-white/5 hover:bg-[#3b82f6]/50 transition-all group cursor-pointer flex flex-col justify-center"
-              >
-                <div className="mb-8 p-3 bg-white/10 w-fit rounded-xl text-white group-hover:scale-110 transition-transform">
-                  <TrendingUp className="w-10 h-10 -rotate-45" />
+              {/* Feature 2 */}
+              <div className="bg-[#3b82f6]/40 backdrop-blur-md p-10 rounded-[2.5rem] border border-white/5 flex flex-col justify-center">
+                <div className="mb-8 p-3 bg-white/10 w-fit rounded-xl text-white">
+                  <TrendingUp className="w-10 h-10" />
                 </div>
-                <h3 className="text-white font-black text-2xl mb-2">先逛一逛</h3>
-                <p className="text-white/50 text-sm">以访客身份预览 (部分功能受限)</p>
+                <h3 className="text-white font-black text-2xl mb-2">智能学习系统</h3>
+                <p className="text-white/50 text-sm">AI 驱动的个性化学习计划</p>
               </div>
             </div>
 

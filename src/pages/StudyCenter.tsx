@@ -1101,7 +1101,7 @@ function DictationView({ onBack }: { onBack: () => void }) {
       if (newErrCount >= 3) {
         setShowTip(true);
         // Display hint: CN - EN
-        setMessage(`提示：${currentItem.zh} - ${currentTarget}`);
+        setMessage(`提示：${currentItem.zh}（英文：${currentItem.en.toLowerCase()}）`);
         // 显示提示后，不自动跳转，等待用户输入正确答案
       } else {
         // Allow user to try again after a brief moment
@@ -1130,7 +1130,7 @@ function DictationView({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-8">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-surface-container-low rounded-full transition-colors">
@@ -1191,7 +1191,7 @@ function DictationView({ onBack }: { onBack: () => void }) {
         </button>
       </div>
 
-      <div className="bg-surface-container-lowest p-12 rounded-[3.5rem] border border-outline-variant/10 shadow-2xl space-y-12 flex flex-col items-center">
+      <div className="bg-surface-container-lowest p-6 rounded-[3.5rem] border border-outline-variant/10 shadow-2xl space-y-6 flex flex-col items-center">
         <div className="text-center space-y-4">
           <div className="flex items-center justify-center gap-4">
             <span className="px-4 py-1.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-[0.2em]">
@@ -1239,7 +1239,7 @@ function DictationView({ onBack }: { onBack: () => void }) {
               onKeyDown={e => e.key === 'Enter' && handleCheck(inputValue)}
               placeholder={mode === 'word' ? "请输入听到的单词" : "请输入听到的句子"}
               disabled={status === 'success'}
-              className={`w-full px-8 py-6 text-center text-3xl font-black bg-transparent border-b-8 transition-all duration-300 outline-none ${
+              className={`w-full px-6 py-4 text-center text-2xl font-black bg-transparent border-b-6 transition-all duration-300 outline-none ${
                 status === 'success' 
                   ? 'border-green-500 text-green-600' 
                   : status === 'error'
@@ -1257,8 +1257,8 @@ function DictationView({ onBack }: { onBack: () => void }) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className={`text-center font-black text-lg ${
-                  status === 'success' ? 'text-green-600' : 'text-red-500'
+                className={`text-center font-bold text-base ${
+                  status === 'success' ? 'text-green-600' : 'text-slate-500'
                 }`}
               >
                 {message}
@@ -1298,75 +1298,37 @@ function DictationView({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 flex items-center gap-6">
-          <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center">
-            <Zap className="w-6 h-6" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center gap-4">
+          <div className="w-10 h-10 bg-primary/10 text-primary rounded-2xl flex items-center justify-center">
+            <Zap className="w-5 h-5" />
           </div>
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">打字速度</p>
-            <p className="text-2xl font-black">{wpm || '--'} <span className="text-xs font-bold text-slate-300">WPM</span></p>
+            <p className="text-xl font-black">{wpm || '--'} <span className="text-xs font-bold text-slate-300">WPM</span></p>
           </div>
         </div>
-        <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 flex items-center gap-6">
-          <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
-            <CheckCircle2 className="w-6 h-6" />
+        <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center gap-4">
+          <div className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
+            <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">正确率</p>
-            <p className="text-2xl font-black">{totalAttempts > 0 ? Math.round((correctCount / totalAttempts) * 100) + '%' : '--'}</p>
+            <p className="text-xl font-black">{totalAttempts > 0 ? Math.round((correctCount / totalAttempts) * 100) + '%' : '--'}</p>
           </div>
         </div>
-        <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 flex items-center gap-6">
-          <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center">
-            <Clock className="w-6 h-6" />
+        <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center gap-4">
+          <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center">
+            <Clock className="w-5 h-5" />
           </div>
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">累计时长</p>
-            <p className="text-2xl font-black">{timeElapsed} <span className="text-xs font-bold text-slate-300">SEC</span></p>
+            <p className="text-xl font-black">{timeElapsed} <span className="text-xs font-bold text-slate-300">SEC</span></p>
           </div>
         </div>
       </div>
 
-      {/* 错题记录 */}
-      {wrongItems.length > 0 && (
-        <div className="bg-surface-container-lowest p-8 rounded-[2.5rem] border border-outline-variant/10 shadow-sm">
-          <h3 className="text-xl font-black font-headline mb-6 flex items-center gap-2">
-            <AlertCircle className="w-6 h-6 text-amber-500" /> 错题记录
-          </h3>
-          <div className="space-y-4 max-h-60 overflow-y-auto">
-            {wrongItems.slice(-5).map((item, index) => (
-              <div key={index} className="p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
-                <div className="flex justify-between items-start mb-2">
-                  <p className="font-bold text-on-surface">{item.item.zh}</p>
-                  <span className="text-xs font-bold text-amber-500">{new Date(item.timestamp).toLocaleTimeString()}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">你的答案</p>
-                    <p className="text-red-500 font-medium">{item.wrongAnswer}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">正确答案</p>
-                    <p className="text-green-600 font-medium">{item.correctAnswer}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          {wrongItems.length > 5 && (
-            <button 
-              onClick={() => {
-                // 这里可以添加查看全部错题的逻辑
-                alert('查看全部错题功能开发中');
-              }}
-              className="mt-4 text-primary font-bold text-sm flex items-center gap-1 hover:underline"
-            >
-              查看全部 {wrongItems.length} 条错题 <ArrowRight className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      )}
+
     </motion.div>
   );
 }
